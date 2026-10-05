@@ -10,7 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from .db import init_db, SessionLocal
 from .models import Employee, SalaryHistory, PayrollRun, PayrollItem, Absence, AccountingEntry, AuditLog, UsnTaxPeriod, TaxPayment, UsnEntryClassification
-from .payroll import calculate_monthly_salary\nfrom .tax import calculate_usn, quarter_number
+from .payroll import calculate_monthly_salary
+from .tax import calculate_usn, quarter_number
 from .exports import payroll_xlsx, inspect_1c_archive
 
 app = FastAPI(title="Laser Love Finance", version="0.4.0")
@@ -178,8 +179,9 @@ def accounting(session: Session = Depends(db)):
 
 @app.post("/api/v1/accounting")
 def create_accounting(req: AccountingIn, session: Session = Depends(db)):
-    row = AccountingEntry(**req.model_dump())
+    row = AccountingEntry(**req.model_dump(exclude={"usn_recognized", "usn_reason"}))
     session.add(row)
+    session.flush()
     session.add(UsnEntryClassification(accounting_entry_id=row.id, recognized=req.usn_recognized, reason=req.usn_reason))
     session.add(AuditLog(action="create", entity="accounting_entry", details=req.description))
     session.commit()
