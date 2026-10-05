@@ -142,3 +142,11 @@ class TaxPayment(Base):
     period_year: Mapped[int]
     period_quarter: Mapped[int | None] = mapped_column(Integer, nullable=True)
     description: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+
+class UsnEntryClassification(Base):
+    __tablename__ = "usn_entry_classifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    accounting_entry_id: Mapped[int] = mapped_column(ForeignKey("accounting_entries.id"), unique=True)
+    recognized: Mapped[bool] = mapped_column(Boolean, default=False)
+    reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
