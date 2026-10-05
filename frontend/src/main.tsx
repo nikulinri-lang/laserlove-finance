@@ -47,7 +47,8 @@ function App(){
       {active==="Зарплата"&&<Payroll onMessage={setMessage}/>}
       {active==="1С / Обмен"&&<Exchange onMessage={setMessage}/>}
       {active==="Календарь и табель"&&<Simple title="Календарь и табель" text="Производственный календарь, табель и контроль отклонений." icon={CalendarDays}/>}
-      {active==="Кадры"&&<Simple title="Кадровый учёт" text="Приём, увольнение, отпуска, больничные и кадровые документы." icon={ShieldCheck}/>}\n      {active==="Налоги"&&<Taxes onMessage={setMessage}/>}
+      {active==="Кадры"&&<Simple title="Кадровый учёт" text="Приём, увольнение, отпуска, больничные и кадровые документы." icon={ShieldCheck}/>}
+      {active==="Налоги"&&<Taxes onMessage={setMessage}/>}
       {active==="Отчёты"&&<Simple title="Отчёты" text="Зарплата, НДФЛ, взносы, стоимость персонала и годовые итоги." icon={FileSpreadsheet}/>}
       {active==="Помощник"&&<Simple title="AI-помощник бухгалтера" text="Контроль ошибок и ответы только на основании данных системы." icon={Bot}/>}
     </main>
@@ -99,7 +100,8 @@ function Taxes({onMessage}:{onMessage:(x:string)=>void}){
     <section className="card"><div className="section-head"><h3>Контроль минимального налога</h3><span className="status"><ShieldCheck size={16}/> 1% от доходов</span></div><div className="tax-detail"><div><small>Минимальный налог</small><b>{money(Number(data?.minimum_tax_ytd||0))}</b></div><div><small>Авансы / платежи</small><b>{money(Number(data?.paid_advances||0))}</b></div><div><small>К доплате по текущему расчёту</small><b>{money(Number(data?.payment_due_ytd||0))}</b></div></div><p className="muted">Минимальный налог сравнивается с обычным налогом по итогам года. В течение года показатель показывается как контроль.</p></section>
   </div>
 }
-\nfunction Exchange({onMessage}:{onMessage:(x:string)=>void}){
+
+function Exchange({onMessage}:{onMessage:(x:string)=>void}){
  const [info,setInfo]=useState<any>(null); const [busy,setBusy]=useState(false);
  const upload=async(file:File)=>{setBusy(true);const fd=new FormData();fd.append("file",file);const r=await fetch(API+"/1c/inspect",{method:"POST",body:fd});const d=await r.json();setBusy(false);if(r.ok)setInfo(d);else onMessage(d.detail||"Ошибка архива")};
  const export1c=async()=>{const r=await fetch(API+"/1c/export?year=2026&month=10");if(!r.ok){onMessage((await r.json()).detail||"Сначала закройте месяц");return}const blob=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="laserlove-payroll-2026-10.xml";a.click();URL.revokeObjectURL(a.href)};
