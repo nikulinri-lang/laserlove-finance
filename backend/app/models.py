@@ -15,7 +15,9 @@ class Organization(Base):
     inn: Mapped[str | None] = mapped_column(String(12), nullable=True)
     kpp: Mapped[str | None] = mapped_column(String(9), nullable=True)
     ogrn: Mapped[str | None] = mapped_column(String(15), nullable=True)
-    tax_system: Mapped[str] = mapped_column(String(40), default="УСН")
+    tax_system: Mapped[str] = mapped_column(String(40), default="УСН доходы минус расходы")
+    usn_rate: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0.15"))
+    vat_mode: Mapped[str] = mapped_column(String(40), default="освобождение")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
