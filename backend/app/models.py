@@ -114,3 +114,31 @@ class ExchangePackage(Base):
     status: Mapped[str] = mapped_column(String(30), default="inspected")
     manifest: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class UsnTaxPeriod(Base):
+    __tablename__ = "usn_tax_periods"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year: Mapped[int]
+    quarter: Mapped[int]
+    income: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    recognized_expenses: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    tax_base: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    calculated_tax: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    minimum_tax: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    target_tax: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    paid_advances: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    payment_due: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    status: Mapped[str] = mapped_column(String(30), default="draft")
+    calculated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TaxPayment(Base):
+    __tablename__ = "tax_payments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tax_type: Mapped[str] = mapped_column(String(40))
+    payment_date: Mapped[date]
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    period_year: Mapped[int]
+    period_quarter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    description: Mapped[str | None] = mapped_column(String(300), nullable=True)
