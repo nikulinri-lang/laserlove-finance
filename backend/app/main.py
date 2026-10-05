@@ -2,25 +2,53 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 from decimal import Decimal
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from .db import init_db, SessionLocal
-from .models import Employee, SalaryHistory, PayrollRun, PayrollItem, Absence, AccountingEntry, AuditLog, UsnTaxPeriod, TaxPayment, UsnEntryClassification
+from .models import Employee, SalaryHistory, PayrollRun, PayrollItem, Absence, AccountingEntry, AuditLog, UsnTaxPeriod, TaxPayment, UsnEntryClassification, User
 from .payroll import calculate_monthly_salary
 from .tax import calculate_usn, quarter_number
 from .exports import payroll_xlsx, inspect_1c_archive
+from .auth import hash_password, verify_password, create_access_token, decode_access_token, seed_credentials
 
-app = FastAPI(title="Laser Love Finance", version="0.4.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="Laser Love Finance", version="0.5.0", docs_url=None, redoc_url=None)
+app.add_middleware(CORSMiddleware, allow_origins=["https://buh.laserlove32.ru"], allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type"])
+
+PUBLIC_PATHS = {"/health", "/api/v1/auth/login"}
+
+@app.middleware("http")
+async def require_auth(request: Request, call_next):
+    if request.method == "OPTIONS" or request.url.path in PUBLIC_PATHS:
+        return await call_next(request)
+    if request.url.path.startswith("/api/"):
+        header = request.headers.get("Authorization", "")
+        if not header.startswith("Bearer "):
+            return JSONResponse({"detail": "Требуется вход в систему"}, status_code=401)
+        try:
+            decode_access_token(header[7:])
+        except Exception:
+            return JSONResponse({"detail": "Сессия недействительна или истекла"}, status_code=401)
+    return await call_next(request)
 
 
 @app.on_event("startup")
 def startup():
     init_db()
+    session = SessionLocal()
+    try:
+        for username, password, role in seed_credentials():
+            if not password:
+                continue
+            existing = session.scalar(select(User).where(User.username == username))
+            if not existing:
+                session.add(User(username=username, password_hash=hash_password(password), role=role, active=True))
+        session.commit()
+    finally:
+        session.close()
 
 
 def db():
@@ -29,6 +57,29 @@ def db():
         yield session
     finally:
         session.close()
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/v1/auth/login")
+def login(req: LoginRequest, session: Session = Depends(db)):
+    user = session.scalar(select(User).where(User.username == req.username, User.active.is_(True)))
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(401, "Неверный логин или пароль")
+    token = create_access_token(user.id, user.username, user.role)
+    return {"access_token": token, "token_type": "bearer", "user": {"username": user.username, "role": user.role}}
+
+
+@app.get("/api/v1/auth/me")
+def auth_me(request: Request, session: Session = Depends(db)):
+    payload = decode_access_token(request.headers["Authorization"][7:])
+    user = session.get(User, int(payload["sub"]))
+    if not user or not user.active:
+        raise HTTPException(401, "Пользователь отключён")
+    return {"username": user.username, "role": user.role}
 
 
 class EmployeeIn(BaseModel):
