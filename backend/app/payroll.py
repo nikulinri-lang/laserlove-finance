@@ -15,6 +15,8 @@ NDFL_BRACKETS = (
 )
 DEFAULT_SOCIAL_BASE_LIMIT_2026 = Decimal("2979000")
 DEFAULT_SOCIAL_RATE = Decimal("0.30")
+DEFAULT_SOCIAL_RATE_ABOVE_LIMIT = Decimal("0.151")
+SICK_MAX_DAILY_2026 = Decimal("6827.40")
 
 
 def money(value: Decimal | int | float | str) -> Decimal:
@@ -53,7 +55,8 @@ def social_contributions(current_base: Decimal, prior_base_ytd: Decimal = Decima
     taxable_before = min(current_base, max(Decimal("0"), base_limit - prior_base_ytd))
     taxable_after = max(Decimal("0"), current_base - taxable_before)
     # Default is the general unified rate. Special MСП/other rates are configurable later.
-    return money(taxable_before * rate + taxable_after * rate)
+    above_rate = DEFAULT_SOCIAL_RATE_ABOVE_LIMIT if rate == DEFAULT_SOCIAL_RATE else rate
+    return money(taxable_before * rate + taxable_after * above_rate)
 
 
 def working_days(year: int, month: int, holidays: Iterable[date] = ()) -> int:
@@ -69,7 +72,10 @@ def vacation_pay(avg_daily: Decimal, calendar_days: int) -> Decimal:
 
 
 def sick_pay(avg_daily: Decimal, days: int, insurance_years: Decimal) -> Decimal:
-    if insurance_years < 5:
+    avg_daily = min(max(Decimal("0"), money(avg_daily)), SICK_MAX_DAILY_2026)
+    if insurance_years < Decimal("0.5"):
+        rate = Decimal("0.60")
+    elif insurance_years < 5:
         rate = Decimal("0.60")
     elif insurance_years < 8:
         rate = Decimal("0.80")
