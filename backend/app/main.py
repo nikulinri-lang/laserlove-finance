@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from .db import init_db, SessionLocal
-from .models import Employee, SalaryHistory, PayrollRun, PayrollItem, Absence, AccountingEntry, AuditLog
-from .payroll import calculate_monthly_salary
+from .models import Employee, SalaryHistory, PayrollRun, PayrollItem, Absence, AccountingEntry, AuditLog, UsnTaxPeriod, TaxPayment
+from .payroll import calculate_monthly_salary\nfrom .tax import calculate_usn, quarter_number
 from .exports import payroll_xlsx, inspect_1c_archive
 
 app = FastAPI(title="Laser Love Finance", version="0.4.0")
@@ -181,6 +181,32 @@ def create_accounting(req: AccountingIn, session: Session = Depends(db)):
     session.add(AuditLog(action="create", entity="accounting_entry", details=req.description))
     session.commit()
     return {"status": "created", "id": row.id}
+
+
+@app.get("/api/v1/taxes/usn")
+def usn_tax(year: int = 2026, session: Session = Depends(db)):
+    entries = session.scalars(select(AccountingEntry).where(AccountingEntry.entry_date >= date(year, 1, 1), AccountingEntry.entry_date < date(year + 1, 1, 1))).all()
+    income = sum((Decimal(e.amount) for e in entries if e.kind == "income"), Decimal("0"))
+    expenses = sum((Decimal(e.amount) for e in entries if e.kind == "expense"), Decimal("0"))
+    payments = session.scalars(select(TaxPayment).where(TaxPayment.tax_type == "УСН", TaxPayment.period_year == year)).all()
+    paid = sum((Decimal(p.amount) for p in payments), Decimal("0"))
+    org_rate = Decimal("0.15")
+    result = calculate_usn(year, income, expenses, org_rate, paid, is_year_end=False)
+    return {k: str(v) if isinstance(v, Decimal) else v for k, v in result.__dict__.items()}
+
+
+@app.post("/api/v1/taxes/usn/calculate")
+def calculate_usn_tax(year: int = 2026, session: Session = Depends(db)):
+    entries = session.scalars(select(AccountingEntry).where(AccountingEntry.entry_date >= date(year, 1, 1), AccountingEntry.entry_date < date(year + 1, 1, 1))).all()
+    income = sum((Decimal(e.amount) for e in entries if e.kind == "income"), Decimal("0"))
+    expenses = sum((Decimal(e.amount) for e in entries if e.kind == "expense"), Decimal("0"))
+    payments = session.scalars(select(TaxPayment).where(TaxPayment.tax_type == "УСН", TaxPayment.period_year == year)).all()
+    paid = sum((Decimal(p.amount) for p in payments), Decimal("0"))
+    result = calculate_usn(year, income, expenses, Decimal("0.15"), paid, is_year_end=False)
+    session.add(UsnTaxPeriod(year=year, quarter=4, income=result.income_ytd, recognized_expenses=result.expenses_ytd, tax_base=result.tax_base_ytd, calculated_tax=result.calculated_tax_ytd, minimum_tax=result.minimum_tax_ytd, target_tax=result.target_tax_ytd, paid_advances=result.paid_advances, payment_due=result.payment_due_ytd, status="draft"))
+    session.add(AuditLog(action="calculate", entity="usn_tax", details=f"{year}: income={income}; expenses={expenses}"))
+    session.commit()
+    return {k: str(v) if isinstance(v, Decimal) else v for k, v in result.__dict__.items()}
 
 
 @app.post("/api/v1/export/xlsx")
