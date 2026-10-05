@@ -19,7 +19,12 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://finance:finance@db:5432/finance
-      SECRET_KEY: change-me
+      SECRET_KEY: ${SECRET_KEY}
+      OWNER_USERNAME: ${OWNER_USERNAME}
+      OWNER_PASSWORD: ${OWNER_PASSWORD}
+      ACCOUNTANT_USERNAME: ${ACCOUNTANT_USERNAME}
+      ACCOUNTANT_PASSWORD: ${ACCOUNTANT_PASSWORD}
+      TOKEN_TTL_HOURS: "12"
     depends_on:
       db:
         condition: service_healthy
