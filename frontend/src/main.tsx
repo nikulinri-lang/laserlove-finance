@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   LayoutDashboard, Users, WalletCards, CalendarDays, FileSpreadsheet,
   Upload, Bot, Settings, ShieldCheck, Plus, RefreshCw, Calculator,
-  Download, CheckCircle2, CircleAlert, X
+  Download, CheckCircle2, CircleAlert, X, ReceiptText
 } from "lucide-react";
 import "./styles.css";
 
@@ -13,7 +13,7 @@ type Dash = { employees:number; payroll_ready:boolean; active_salary:number; vac
 
 const menu = [
   ["Обзор", LayoutDashboard], ["Сотрудники", Users], ["Зарплата", WalletCards],
-  ["Календарь и табель", CalendarDays], ["Кадры", ShieldCheck],
+  ["Календарь и табель", CalendarDays], ["Кадры", ShieldCheck], ["Налоги", ReceiptText],
   ["1С / Обмен", Upload], ["Отчёты", FileSpreadsheet], ["Помощник", Bot]
 ] as const;
 
@@ -47,7 +47,7 @@ function App(){
       {active==="Зарплата"&&<Payroll onMessage={setMessage}/>}
       {active==="1С / Обмен"&&<Exchange onMessage={setMessage}/>}
       {active==="Календарь и табель"&&<Simple title="Календарь и табель" text="Производственный календарь, табель и контроль отклонений." icon={CalendarDays}/>}
-      {active==="Кадры"&&<Simple title="Кадровый учёт" text="Приём, увольнение, отпуска, больничные и кадровые документы." icon={ShieldCheck}/>}
+      {active==="Кадры"&&<Simple title="Кадровый учёт" text="Приём, увольнение, отпуска, больничные и кадровые документы." icon={ShieldCheck}/>}\n      {active==="Налоги"&&<Taxes onMessage={setMessage}/>}
       {active==="Отчёты"&&<Simple title="Отчёты" text="Зарплата, НДФЛ, взносы, стоимость персонала и годовые итоги." icon={FileSpreadsheet}/>}
       {active==="Помощник"&&<Simple title="AI-помощник бухгалтера" text="Контроль ошибок и ответы только на основании данных системы." icon={Bot}/>}
     </main>
@@ -89,7 +89,17 @@ function Payroll({onMessage}:{onMessage:(x:string)=>void}){
     <section className="card"><div className="notice"><ShieldCheck size={18}/><div><b>Правила 2026</b><span>НДФЛ рассчитывается по прогрессивной шкале. Ставки и лимиты вынесены в расчётный модуль.</span></div></div>
     {result?<><div className="table payroll-table"><div className="tr th"><span>Сотрудник</span><span>Начислено</span><span>НДФЛ</span><span>К выплате</span><span>Взносы</span><span>Стоимость</span></div>{result.items.map((x:any)=><div className="tr" key={x.employee_id}><span><b>{x.name}</b></span><span>{money(Number(x.gross))}</span><span>{money(Number(x.ndfl))}</span><span>{money(Number(x.net))}</span><span>{money(Number(x.employer_contributions))}</span><span>{money(Number(x.employer_cost))}</span></div>)}</div><div className="result-footer"><b>Расчёт №{result.run_id}</b><span className="status"><CheckCircle2 size={16}/> Черновик — можно проверить и закрыть</span></div></>:<Empty text="Нажмите «Рассчитать», чтобы получить ведомость."/>}</section></div>
 }
-function Exchange({onMessage}:{onMessage:(x:string)=>void}){
+
+function Taxes({onMessage}:{onMessage:(x:string)=>void}){
+  const [data,setData]=useState<any>(null); const [busy,setBusy]=useState(false);
+  const load=async()=>{setBusy(true);const r=await fetch(API+"/taxes/usn?year=2026");const d=await r.json();setBusy(false);if(r.ok)setData(d);else onMessage(d.detail||"Ошибка расчёта УСН")};
+  useEffect(()=>{load()},[]);
+  return <div className="stack"><div className="toolbar"><div><h2>УСН · доходы минус расходы</h2><p>Нарастающим итогом с начала 2026 года. Ставка в системе — 15%.</p></div><button className="primary" onClick={load} disabled={busy}><Calculator size={17}/>{busy?"Считаем…":"Обновить расчёт"}</button></div>
+    <div className="tax-grid"><Metric title="Доходы" value={money(Number(data?.income_ytd||0))} note="с начала года"/><Metric title="Расходы" value={money(Number(data?.expenses_ytd||0))} note="введены как расход"/><Metric title="Налоговая база" value={money(Number(data?.tax_base_ytd||0))} note="доходы − расходы"/><Metric title="УСН 15%" value={money(Number(data?.calculated_tax_ytd||0))} note="расчётная сумма"/></div>
+    <section className="card"><div className="section-head"><h3>Контроль минимального налога</h3><span className="status"><ShieldCheck size={16}/> 1% от доходов</span></div><div className="tax-detail"><div><small>Минимальный налог</small><b>{money(Number(data?.minimum_tax_ytd||0))}</b></div><div><small>Авансы / платежи</small><b>{money(Number(data?.paid_advances||0))}</b></div><div><small>К доплате по текущему расчёту</small><b>{money(Number(data?.payment_due_ytd||0))}</b></div></div><p className="muted">Минимальный налог сравнивается с обычным налогом по итогам года. В течение года показатель показывается как контроль.</p></section>
+  </div>
+}
+\nfunction Exchange({onMessage}:{onMessage:(x:string)=>void}){
  const [info,setInfo]=useState<any>(null); const [busy,setBusy]=useState(false);
  const upload=async(file:File)=>{setBusy(true);const fd=new FormData();fd.append("file",file);const r=await fetch(API+"/1c/inspect",{method:"POST",body:fd});const d=await r.json();setBusy(false);if(r.ok)setInfo(d);else onMessage(d.detail||"Ошибка архива")};
  const export1c=async()=>{const r=await fetch(API+"/1c/export?year=2026&month=10");if(!r.ok){onMessage((await r.json()).detail||"Сначала закройте месяц");return}const blob=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="laserlove-payroll-2026-10.xml";a.click();URL.revokeObjectURL(a.href)};
