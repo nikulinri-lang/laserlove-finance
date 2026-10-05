@@ -8,6 +8,21 @@ import {
 import "./styles.css";
 
 const API = "/api/v1";
+const tokenKey = "laserlove_finance_token";
+const userKey = "laserlove_finance_user";
+const getToken = () => localStorage.getItem(tokenKey) || "";
+async function apiFetch(url:string, options:RequestInit={}) {
+  const headers = new Headers(options.headers || {});
+  const token = getToken();
+  if (token) headers.set("Authorization", "Bearer "+token);
+  const response = await fetch(url, {...options, headers});
+  if (response.status === 401) {
+    localStorage.removeItem(tokenKey);
+    localStorage.removeItem(userKey);
+    window.location.reload();
+  }
+  return response;
+}
 type Employee = { id:number; full_name:string; position:string; hire_date:string; salary:number; employment_rate:number; vacation_balance:number; active:boolean };
 type Dash = { employees:number; payroll_ready:boolean; active_salary:number; vacation_days:number };
 
@@ -19,14 +34,43 @@ const menu = [
 
 const money=(n:number)=>new Intl.NumberFormat("ru-RU",{style:"currency",currency:"RUB",maximumFractionDigits:0}).format(n||0);
 
+function Login({onLogin}:{onLogin:(token:string,user:any)=>void}){
+  const [username,setUsername]=useState("");
+  const [password,setPassword]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  const submit=async(e:React.FormEvent)=>{
+    e.preventDefault(); setBusy(true); setError("");
+    try{
+      const r=await apiFetch(API+"/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
+      const d=await r.json();
+      if(!r.ok){setError(d.detail||"Ошибка входа");return}
+      onLogin(d.access_token,d.user);
+    }catch{setError("Не удалось подключиться к серверу")}
+    finally{setBusy(false)}
+  };
+  return <div className="login-page"><div className="login-card">
+    <div className="login-logo">LL</div><small>LASER LOVE · FINANCE</small>
+    <h1>Вход в систему</h1><p>Доступ только для авторизованных пользователей.</p>
+    <form onSubmit={submit} className="form">
+      <label>Логин<input autoFocus value={username} onChange={e=>setUsername(e.target.value)} autoComplete="username"/></label>
+      <label>Пароль<input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password"/></label>
+      {error&&<div className="login-error">{error}</div>}
+      <button className="primary full" disabled={busy}>{busy?"Проверяем…":"Войти"}</button>
+    </form>
+  </div></div>
+}
+
 function App(){
   const [active,setActive]=useState("Обзор");
   const [dash,setDash]=useState<Dash|null>(null);
   const [employees,setEmployees]=useState<Employee[]>([]);
   const [loading,setLoading]=useState(false);
   const [message,setMessage]=useState("");
+  const [user,setUser]=useState<any>(()=>{try{return JSON.parse(localStorage.getItem(userKey)||"null")}catch{return null}});
+  const logout=()=>{localStorage.removeItem(tokenKey);localStorage.removeItem(userKey);window.location.reload()};
   const load=async()=>{setLoading(true);try{
-    const [d,e]=await Promise.all([fetch(API+"/dashboard"),fetch(API+"/employees")]);
+    const [d,e]=await Promise.all([apiFetch(API+"/dashboard"),apiFetch(API+"/employees")]);
     if(d.ok)setDash(await d.json()); if(e.ok)setEmployees(await e.json());
   }finally{setLoading(false)}};
   useEffect(()=>{load()},[]);
@@ -35,7 +79,7 @@ function App(){
     <aside>
       <div className="brand"><div className="logo">LL</div><div><b>Laser Love</b><span>Finance</span></div></div>
       <nav>{menu.map(([name,Icon])=><button key={name} className={active===name?"active":""} onClick={()=>setActive(name)}><Icon size={18}/><span>{name}</span></button>)}</nav>
-      <button className="settings"><Settings size={18}/>Настройки</button>
+      <div className="user-box"><div><b>{user?.username}</b><span>{user?.role==="owner"?"Руководитель":"Бухгалтер"}</span></div><button className="settings" onClick={logout}><Settings size={18}/>Выйти</button></div>
     </aside>
     <main>
       <header><div><small>ФИНАНСЫ · КАДРЫ · ЗАРПЛАТА</small><h1>{active}</h1></div>
@@ -80,12 +124,12 @@ function Employees({employees,reload}:{employees:Employee[];reload:()=>void}){
 function EmployeeModal({close,reload}:{close:()=>void;reload:()=>void}){
   const [form,setForm]=useState({full_name:"",position:"Сотрудник",hire_date:"2026-10-01",salary:"",insurance_years:"0"});
   const [busy,setBusy]=useState(false);
-  const save=async()=>{setBusy(true);const r=await fetch(API+"/employees",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,salary:Number(form.salary),insurance_years:Number(form.insurance_years)})});setBusy(false);if(r.ok){close();reload()}};
+  const save=async()=>{setBusy(true);const r=await apiFetch(API+"/employees",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,salary:Number(form.salary),insurance_years:Number(form.insurance_years)})});setBusy(false);if(r.ok){close();reload()}};
   return <Modal title="Новый сотрудник" close={close}><div className="form"><label>ФИО<input value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})}/></label><label>Должность<input value={form.position} onChange={e=>setForm({...form,position:e.target.value})}/></label><label>Дата приёма<input type="date" value={form.hire_date} onChange={e=>setForm({...form,hire_date:e.target.value})}/></label><label>Оклад, ₽<input type="number" value={form.salary} onChange={e=>setForm({...form,salary:e.target.value})}/></label><label>Страховой стаж, лет<input type="number" step=".1" value={form.insurance_years} onChange={e=>setForm({...form,insurance_years:e.target.value})}/></label><button className="primary full" disabled={busy} onClick={save}>{busy?"Сохранение…":"Сохранить сотрудника"}</button></div></Modal>
 }
 function Payroll({onMessage}:{onMessage:(x:string)=>void}){
   const [result,setResult]=useState<any>(null); const [busy,setBusy]=useState(false);
-  const calculate=async()=>{setBusy(true);const r=await fetch(API+"/payroll/run?year=2026&month=10",{method:"POST"});const d=await r.json();setBusy(false);if(r.ok)setResult(d);else onMessage(d.detail||"Ошибка расчёта")};
+  const calculate=async()=>{setBusy(true);const r=await apiFetch(API+"/payroll/run?year=2026&month=10",{method:"POST"});const d=await r.json();setBusy(false);if(r.ok)setResult(d);else onMessage(d.detail||"Ошибка расчёта")};
   return <div className="stack"><div className="toolbar"><div><h2>Зарплата · Октябрь 2026</h2><p>Расчёт окладов, НДФЛ, взносов и полной стоимости работодателя.</p></div><button className="primary" onClick={calculate} disabled={busy}><Calculator size={17}/>{busy?"Считаем…":"Рассчитать"}</button></div>
     <section className="card"><div className="notice"><ShieldCheck size={18}/><div><b>Правила 2026</b><span>НДФЛ рассчитывается по прогрессивной шкале. Ставки и лимиты вынесены в расчётный модуль.</span></div></div>
     {result?<><div className="table payroll-table"><div className="tr th"><span>Сотрудник</span><span>Начислено</span><span>НДФЛ</span><span>К выплате</span><span>Взносы</span><span>Стоимость</span></div>{result.items.map((x:any)=><div className="tr" key={x.employee_id}><span><b>{x.name}</b></span><span>{money(Number(x.gross))}</span><span>{money(Number(x.ndfl))}</span><span>{money(Number(x.net))}</span><span>{money(Number(x.employer_contributions))}</span><span>{money(Number(x.employer_cost))}</span></div>)}</div><div className="result-footer"><b>Расчёт №{result.run_id}</b><span className="status"><CheckCircle2 size={16}/> Черновик — можно проверить и закрыть</span></div></>:<Empty text="Нажмите «Рассчитать», чтобы получить ведомость."/>}</section></div>
@@ -93,7 +137,7 @@ function Payroll({onMessage}:{onMessage:(x:string)=>void}){
 
 function Taxes({onMessage}:{onMessage:(x:string)=>void}){
   const [data,setData]=useState<any>(null); const [busy,setBusy]=useState(false);
-  const load=async()=>{setBusy(true);const r=await fetch(API+"/taxes/usn?year=2026");const d=await r.json();setBusy(false);if(r.ok)setData(d);else onMessage(d.detail||"Ошибка расчёта УСН")};
+  const load=async()=>{setBusy(true);const r=await apiFetch(API+"/taxes/usn?year=2026");const d=await r.json();setBusy(false);if(r.ok)setData(d);else onMessage(d.detail||"Ошибка расчёта УСН")};
   useEffect(()=>{load()},[]);
   return <div className="stack"><div className="toolbar"><div><h2>УСН · доходы минус расходы</h2><p>Нарастающим итогом с начала 2026 года. Ставка в системе — 15%.</p></div><button className="primary" onClick={load} disabled={busy}><Calculator size={17}/>{busy?"Считаем…":"Обновить расчёт"}</button></div>
     <div className="tax-grid"><Metric title="Доходы" value={money(Number(data?.income_ytd||0))} note="с начала года"/><Metric title="Расходы" value={money(Number(data?.expenses_ytd||0))} note="введены как расход"/><Metric title="Налоговая база" value={money(Number(data?.tax_base_ytd||0))} note="доходы − расходы"/><Metric title="УСН 15%" value={money(Number(data?.calculated_tax_ytd||0))} note="расчётная сумма"/></div>
@@ -103,8 +147,8 @@ function Taxes({onMessage}:{onMessage:(x:string)=>void}){
 
 function Exchange({onMessage}:{onMessage:(x:string)=>void}){
  const [info,setInfo]=useState<any>(null); const [busy,setBusy]=useState(false);
- const upload=async(file:File)=>{setBusy(true);const fd=new FormData();fd.append("file",file);const r=await fetch(API+"/1c/inspect",{method:"POST",body:fd});const d=await r.json();setBusy(false);if(r.ok)setInfo(d);else onMessage(d.detail||"Ошибка архива")};
- const export1c=async()=>{const r=await fetch(API+"/1c/export?year=2026&month=10");if(!r.ok){onMessage((await r.json()).detail||"Сначала закройте месяц");return}const blob=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="laserlove-payroll-2026-10.xml";a.click();URL.revokeObjectURL(a.href)};
+ const upload=async(file:File)=>{setBusy(true);const fd=new FormData();fd.append("file",file);const r=await apiFetch(API+"/1c/inspect",{method:"POST",body:fd});const d=await r.json();setBusy(false);if(r.ok)setInfo(d);else onMessage(d.detail||"Ошибка архива")};
+ const export1c=async()=>{const r=await apiFetch(API+"/1c/export?year=2026&month=10");if(!r.ok){onMessage((await r.json()).detail||"Сначала закройте месяц");return}const blob=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="laserlove-payroll-2026-10.xml";a.click();URL.revokeObjectURL(a.href)};
  return <div className="stack"><div className="toolbar"><div><h2>1С / Обмен</h2><p>Безопасный просмотр архивов и подготовка данных для обмена.</p></div><button className="secondary" onClick={export1c}><Download size={17}/>Выгрузить зарплату</button></div>
  <section className="card upload-card"><label className="drop"><Upload size={28}/><b>{busy?"Проверяем архив…":"Загрузить архив 1С"}</b><span>ZIP/XML · до 50 МБ · файлы не исполняются</span><input type="file" accept=".zip,.xml" onChange={e=>e.target.files?.[0]&&upload(e.target.files[0])}/></label>
  {info&&<div className="exchange-result"><div className="result-head"><div><b>Архив распознан</b><span>{info.files_count} файлов · {info.xml_count} XML</span></div><span className="status"><CheckCircle2 size={16}/> Можно переходить к сопоставлению</span></div><div className="mini-list">{(info.xml||[]).slice(0,8).map((x:any)=><div key={x.file}><span>{x.file}</span><small>{x.root||"XML ошибка"} · {x.size} байт</small></div>)}</div></div>}</section></div>
@@ -112,4 +156,9 @@ function Exchange({onMessage}:{onMessage:(x:string)=>void}){
 function Simple({title,text,icon:Icon}:{title:string;text:string;icon:any}){return <section className="card empty-page"><Icon size={32}/><h2>{title}</h2><p>{text}</p><div className="coming">Модуль в разработке — данные будут подключены к общей базе.</div></section>}
 function Empty({text}:{text:string}){return <div className="empty"><CircleAlert size={20}/><span>{text}</span></div>}
 function Modal({title,close,children}:{title:string;close:()=>void;children:React.ReactNode}){return <div className="overlay"><div className="modal"><div className="modal-head"><h3>{title}</h3><button className="icon-btn" onClick={close}><X size={18}/></button></div>{children}</div></div>}
-createRoot(document.getElementById("root")!).render(<App/>);
+function Root(){
+  const [logged,setLogged]=useState(!!getToken());
+  const handleLogin=(token:string,user:any)=>{localStorage.setItem(tokenKey,token);localStorage.setItem(userKey,JSON.stringify(user));setLogged(true)};
+  return logged?<App/>:<Login onLogin={handleLogin}/>;
+}
+createRoot(document.getElementById("root")!).render(<Root/>);
